@@ -27,6 +27,7 @@
             position: absolute;
             top: 50%;
             left: 50%;
+            transform: translate(-50%, -50%);
             width: 0;
             height: 0;
             background: transparent;
@@ -172,13 +173,15 @@
             /* Hidden by default, shown by JS on mobile/touch */
         }
 
+        /* MINECRAFT PE BUTTON STYLE */
         .touch-button {
             position: absolute;
             width: 70px;
             height: 70px;
-            background: rgba(50, 50, 50, 0.6);
-            border: 2px solid rgba(255, 255, 255, 0.8);
-            border-radius: 12px;
+            /* Blocky, semi-transparent gray look */
+            background: rgba(80, 80, 80, 0.6);
+            border: 4px solid #333;
+            border-radius: 6px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -186,14 +189,17 @@
             color: white;
             user-select: none;
             pointer-events: auto;
-            /* Re-enable interaction for buttons */
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 0 #111, 0 8px 12px rgba(0, 0, 0, 0.5);
             touch-action: manipulation;
-            /* Prevent double-tap zoom */
+            font-weight: bold;
+            transition: none;
+            /* Disable default transition for crispness */
         }
 
         .touch-button:active {
-            background: rgba(70, 70, 70, 0.8);
+            background: rgba(100, 100, 100, 0.8);
+            box-shadow: 0 2px 0 #111, 0 4px 8px rgba(0, 0, 0, 0.5);
+            transform: translateY(2px);
         }
 
         /* Directional Pad */
@@ -209,8 +215,9 @@
             position: absolute;
             width: 55px;
             height: 55px;
-            border-radius: 8px;
-            opacity: 0.8;
+            border-radius: 6px;
+            opacity: 0.9;
+            /* D-Pad specific appearance */
         }
 
         #dpad #move-up {
@@ -233,25 +240,27 @@
             right: 0;
         }
 
-        /* Action Buttons */
-        #action-buttons {
-            position: absolute;
-            right: 20px;
+        /* Jump Button (MCPE-style, larger and often distinct) */
+        #jump-button {
+            right: 30px;
             bottom: 100px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            /* Circular Jump button */
+            background: rgba(50, 50, 50, 0.7);
+            border-color: #555;
+            box-shadow: 0 4px 0 #222, 0 8px 12px rgba(0, 0, 0, 0.5);
+            font-size: 20px;
         }
 
-        /* Jump Button */
-        #jump-button {
-            right: 20px;
-            bottom: 20px;
-            width: 100px;
-            height: 60px;
-            border-radius: 10px;
-            background: rgba(50, 50, 50, 0.8);
-            pointer-events: auto;
+        #jump-button:active {
+            box-shadow: 0 2px 0 #222, 0 4px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Hiding action-buttons as block interaction is now via screen gesture */
+        #action-buttons {
+            display: none;
         }
 
         /* --- Media Queries for Mobile/Responsiveness --- */
@@ -269,6 +278,7 @@
         }
 
         @media (max-width: 600px) {
+            /* ... (Existing media queries preserved and adapted) ... */
             .block-item {
                 width: 40px;
                 height: 40px;
@@ -323,17 +333,17 @@
                 font-size: 20px;
             }
 
-            #action-buttons {
-                right: 10px;
+            #jump-button {
+                right: 20px;
                 bottom: 90px;
-                gap: 10px;
+                width: 70px;
+                height: 70px;
+                font-size: 16px;
             }
 
-            #jump-button {
-                right: 10px;
-                bottom: 10px;
-                width: 80px;
-                height: 50px;
+            #action-buttons {
+                /* Kept for structure but display:none */
+                display: none;
             }
         }
     </style>
@@ -353,7 +363,7 @@
                 **Desktop/PC:** WASD (Move), Space (Jump), LMB (Destroy), RMB (Place)
             </div>
             <div class="action">
-                **Mobile/Touch:** D-Pad (Move), Tap Buttons (Action), Drag (Look)
+                **Mobile/Touch (MCPE Style):** D-Pad (Move), **Tap Screen (Place Block)**, **Hold Screen (Mine/Destroy)**, JUMP button.
             </div>
         </div>
     </div>
@@ -387,9 +397,7 @@
         </div>
 
         <div id="action-buttons">
-            <button id="place-block" class="touch-button">🧱</button>
-            <button id="destroy-block" class="touch-button">💥</button>
-        </div>
+            </div>
 
         <button id="jump-button" class="touch-button">JUMP</button>
     </div>
@@ -424,7 +432,7 @@
         const PLAYER_EYE_HEIGHT = 0.05; // Preservation of requested value
         let onGround = false;
 
-        // NEW: Other Player Constants for multiplayer visualization
+        // Other Player Constants for multiplayer visualization
         const OTHER_PLAYER_HEIGHT = 1.8;
         const OTHER_PLAYER_COLOR = 0xFF00FF; // Magenta for visual distinction
         const otherPlayers = new THREE.Group(); // Container for all other player meshes
@@ -497,7 +505,64 @@
         directionalLight.position.set(10, 20, 10);
         scene.add(directionalLight);
 
-        // NEW: Function to create a visual representation of another player
+        // NEW: Function to create a 3D text sprite that always faces the camera
+        function makeTextSprite(message, parameters) {
+            if (parameters === undefined) parameters = {};
+            const fontface = parameters.hasOwnProperty("fontface") ? parameters["fontface"] : "Arial";
+            const fontsize = parameters.hasOwnProperty("fontsize") ? parameters["fontsize"] : 28;
+            const borderThickness = parameters.hasOwnProperty("borderThickness") ? parameters["borderThickness"] : 2;
+            const borderColor = parameters.hasOwnProperty("borderColor") ? parameters["borderColor"] : { r: 255, g: 255, b: 255, a: 1.0 };
+            const backgroundColor = parameters.hasOwnProperty("backgroundColor") ? parameters["backgroundColor"] : { r: 0, g: 0, b: 0, a: 0.6 };
+
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            context.font = "Bold " + fontsize + "px " + fontface;
+
+            // get size data (height depends only on font size)
+            const metrics = context.measureText(message);
+            const textWidth = metrics.width;
+
+            // canvas dimensions
+            const padding = borderThickness * 2;
+            const canvasWidth = textWidth + padding * 2;
+            const canvasHeight = fontsize * 1.4 + padding;
+
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+
+            // Re-set font and context for centered text draw
+            context.font = "Bold " + fontsize + "px " + fontface;
+
+            // background color
+            context.fillStyle = "rgba(" + backgroundColor.r + "," + backgroundColor.g + "," + backgroundColor.b + "," + backgroundColor.a + ")";
+            // border color
+            context.strokeStyle = "rgba(" + borderColor.r + "," + borderColor.g + "," + borderColor.b + "," + borderColor.a + ")";
+
+            context.lineWidth = borderThickness;
+
+            // Draw rectangle background
+            context.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            // text color
+            context.fillStyle = "rgba(255, 255, 255, 1.0)";
+
+            // draw text in the center
+            context.fillText(message, padding, fontsize + padding * 0.5);
+
+            // texture for sprite
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+
+            // Set size based on text dimensions, scaled for the 3D world (adjust factor 0.01 for size)
+            sprite.scale.set(canvasWidth * 0.015, canvasHeight * 0.015, 1);
+
+            return sprite;
+        }
+
+        // Function to create a visual representation of another player
         function createPlayerMesh(id, name, position = { x: 0, y: 0, z: 0 }) {
             // Simple cylinder to represent the player body
             const geometry = new THREE.CylinderGeometry(
@@ -514,6 +579,12 @@
 
             // Store metadata
             playerMesh.userData = { id, name };
+
+            // NEW: Create and attach the name tag
+            const nameTag = makeTextSprite(name);
+            // Position the name tag slightly above the player's head (OTHER_PLAYER_HEIGHT / 2 is the center of the cylinder)
+            nameTag.position.set(0, OTHER_PLAYER_HEIGHT / 2 + 0.5, 0);
+            playerMesh.add(nameTag);
 
             otherPlayers.add(playerMesh);
             return playerMesh;
@@ -544,7 +615,8 @@
             const fixedSpawnY = spawnHeight * BLOCK_SIZE + 1 + PLAYER_HEIGHT;
             yawObject.position.set(centerX, fixedSpawnY, centerZ);
 
-            // NEW: Add a placeholder player nearby for testing the multiplayer framework
+            // Add a placeholder player nearby for testing the multiplayer framework
+            // The name "NetPlayer" will now appear above the magenta cylinder.
             createPlayerMesh(
                 "remote_id_123",
                 "NetPlayer",
@@ -630,6 +702,10 @@
         let lastTouchX = 0;
         let lastTouchY = 0;
 
+        // NEW MCPE-style touch variables
+        let touchActionTimer = null;
+        const LONG_PRESS_DURATION = 500; // Time in ms to differentiate tap (place) from long press (destroy)
+
         // Mouse Look (Desktop)
         const onMouseMove = (event) => {
             if (controlsEnabled) {
@@ -642,20 +718,46 @@
             }
         };
 
-        // Touch Look START (Mobile) - FIX: Initialize touch position
+        // Touch Look & Block Action START (Mobile - MCPE Style)
         function onTouchStart(event) {
             if (!controlsEnabled || event.touches.length === 0) return;
-            // Only set the initial position if the touch starts on the canvas
+
             if (event.target === renderer.domElement) {
+                // --- Look Initialization ---
                 const touch = event.touches[0];
                 lastTouchX = touch.clientX;
                 lastTouchY = touch.clientY;
+
+                // --- Block Action Initialization (Long Press Timer) ---
+                const intersect = getIntersectedBlock();
+                if (intersect) {
+                    // Start a timer. If it expires, it's a long press (destroy)
+                    touchActionTimer = setTimeout(() => {
+                        if (controlsEnabled) {
+                            destroyBlock(intersect);
+                        }
+                        touchActionTimer = null; // Mark as handled
+                    }, LONG_PRESS_DURATION);
+                }
             }
         }
 
-        // Touch Look (Mobile) - FIX: Improved delta calculation
+        // Touch Look (Mobile)
         function onTouchMove(event) {
             if (!controlsEnabled) return;
+
+            // If the finger moves significantly, cancel the long press timer
+            if (touchActionTimer) {
+                const touch = event.touches[0];
+                const deltaX = touch.clientX - lastTouchX;
+                const deltaY = touch.clientY - lastTouchY;
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                if (distance > 5) { // If moved more than 5 pixels
+                    clearTimeout(touchActionTimer);
+                    touchActionTimer = null;
+                }
+            }
+
             event.preventDefault(); // Prevent scrolling/panning when looking
 
             // Use the first touch point for camera rotation
@@ -685,21 +787,35 @@
             }
         }
 
+        // Touch Action END (Mobile - MCPE Style)
         function onTouchEnd(event) {
-            // Only reset if no touches remain
+            if (!controlsEnabled) return;
+
+            // --- Block Action Check (Short Press/Place) ---
+            // If touchActionTimer is running, it means the touch was short (not long press yet and not cancelled by movement).
+            if (touchActionTimer) {
+                clearTimeout(touchActionTimer);
+
+                // This is a short tap (Place action)
+                const intersect = getIntersectedBlock();
+                if (intersect) {
+                    placeBlock(intersect);
+                }
+                touchActionTimer = null;
+            }
+
+            // --- Look Reset ---
             if (event.touches.length === 0) {
                 lastTouchX = 0;
                 lastTouchY = 0;
             }
         }
 
-        // NEW: Multiplayer Player Update Framework
-        // This function would be called when network data is received from a server.
+        // Multiplayer Player Update Framework
         function updateRemotePlayer(id, newPosition, newRotation) {
             let playerMesh = otherPlayers.children.find(mesh => mesh.userData.id === id);
 
             if (!playerMesh) {
-                // If the player mesh doesn't exist, create it (e.g., they just joined)
                 playerMesh = createPlayerMesh(id, `Player_${id}`, newPosition);
             }
 
@@ -710,35 +826,23 @@
                 newPosition.z
             );
 
-            // Apply rotation:
-            // playerMesh.rotation.y = newRotation.y; 
+            // You would typically apply rotation here too:
+            // playerMesh.rotation.y = newRotation.y;
         }
 
         // Action Bindings (Desktop/Mobile)
         renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
-        // Desktop Mouse Click
+        // Desktop Mouse Click (Left Click: Destroy, Right Click: Place)
         document.addEventListener('mousedown', (event) => {
-            if (!controlsEnabled || isTouchDevice) return; // Prevent interference with touch buttons
+            if (!controlsEnabled || isTouchDevice) return;
             const intersect = getIntersectedBlock();
             if (!intersect) return;
             if (event.button === 0) { destroyBlock(intersect); } // Left Click
             else if (event.button === 2) { placeBlock(intersect); } // Right Click
         });
 
-        // Mobile Action Buttons
-        document.getElementById('destroy-block').addEventListener('touchstart', (event) => {
-            event.preventDefault();
-            const intersect = getIntersectedBlock();
-            if (intersect) destroyBlock(intersect);
-        });
-
-        document.getElementById('place-block').addEventListener('touchstart', (event) => {
-            event.preventDefault();
-            const intersect = getIntersectedBlock();
-            if (intersect) placeBlock(intersect);
-        });
-
+        // Mobile Jump Button Listener
         document.getElementById('jump-button').addEventListener('touchstart', (event) => {
             event.preventDefault();
             if (onGround) {
@@ -828,8 +932,7 @@
             }
         });
 
-        // FIX: Replaced global document touch listeners with listeners on the canvas (renderer.domElement)
-        // This prevents the camera look from conflicting with the D-pad and action buttons.
+        // FIX: Mobile look and action listeners are on the canvas (renderer.domElement)
         if (isTouchDevice) {
             renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
             renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
