@@ -3,7 +3,6 @@
 
 <head>
     <title>Voxelcraft - Demo</title>
-    <!-- FIX: Corrected the script source URL to correctly load Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         /* --- General Reset & Body --- */
@@ -379,13 +378,12 @@
         </div>
     </div>
 
-    <!-- Mobile Controls Interface -->
     <div id="mobile-controls">
         <div id="dpad">
             <button id="move-up" class="d-button touch-button" data-dir="up">W</button>
             <button id="move-down" class="d-button touch-button" data-dir="down">S</button>
             <button id="move-left" class="d-button touch-button" data-dir="left">A</button>
-            <button id="move-right" class="d-button touch-button" data-dir="D">D</button>
+            <button id="move-right" class="d-button touch-button" data-dir="right">D</button>
         </div>
 
         <div id="action-buttons">
@@ -425,6 +423,11 @@
         const PLAYER_RADIUS = 0.3;
         const PLAYER_EYE_HEIGHT = 0.05; // Preservation of requested value
         let onGround = false;
+
+        // NEW: Other Player Constants for multiplayer visualization
+        const OTHER_PLAYER_HEIGHT = 1.8;
+        const OTHER_PLAYER_COLOR = 0xFF00FF; // Magenta for visual distinction
+        const otherPlayers = new THREE.Group(); // Container for all other player meshes
 
         const COLORS = { 1: new THREE.Color(0x00FF00), 2: new THREE.Color(0x808080), 3: new THREE.Color(0xFFFFFF) };
         let selectedBlockType = 1;
@@ -468,6 +471,8 @@
         const yawObject = new THREE.Object3D();
         yawObject.add(camera);
         scene.add(yawObject);
+        // Add the otherPlayers group to the scene
+        scene.add(otherPlayers);
         camera.position.set(0, PLAYER_EYE_HEIGHT, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -491,6 +496,28 @@
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
         directionalLight.position.set(10, 20, 10);
         scene.add(directionalLight);
+
+        // NEW: Function to create a visual representation of another player
+        function createPlayerMesh(id, name, position = { x: 0, y: 0, z: 0 }) {
+            // Simple cylinder to represent the player body
+            const geometry = new THREE.CylinderGeometry(
+                PLAYER_RADIUS, // Radius top
+                PLAYER_RADIUS, // Radius bottom
+                OTHER_PLAYER_HEIGHT, // Height
+                16 // Radial segments
+            );
+            const material = new THREE.MeshLambertMaterial({ color: OTHER_PLAYER_COLOR });
+            const playerMesh = new THREE.Mesh(geometry, material);
+
+            // Center the cylinder on the floor position
+            playerMesh.position.set(position.x, position.y + OTHER_PLAYER_HEIGHT / 2, position.z);
+
+            // Store metadata
+            playerMesh.userData = { id, name };
+
+            otherPlayers.add(playerMesh);
+            return playerMesh;
+        }
 
         // --- 5. Game Functions (Terrain, Blocks) ---
 
@@ -516,6 +543,13 @@
             const centerZ = WORLD_SIZE * BLOCK_SIZE / 2;
             const fixedSpawnY = spawnHeight * BLOCK_SIZE + 1 + PLAYER_HEIGHT;
             yawObject.position.set(centerX, fixedSpawnY, centerZ);
+
+            // NEW: Add a placeholder player nearby for testing the multiplayer framework
+            createPlayerMesh(
+                "remote_id_123",
+                "NetPlayer",
+                { x: centerX + 5, y: fixedSpawnY, z: centerZ + 5 }
+            );
         }
 
         generateTerrain();
@@ -608,13 +642,32 @@
             }
         };
 
-        // Touch Look (Mobile)
+        // Touch Look START (Mobile) - FIX: Initialize touch position
+        function onTouchStart(event) {
+            if (!controlsEnabled || event.touches.length === 0) return;
+            // Only set the initial position if the touch starts on the canvas
+            if (event.target === renderer.domElement) {
+                const touch = event.touches[0];
+                lastTouchX = touch.clientX;
+                lastTouchY = touch.clientY;
+            }
+        }
+
+        // Touch Look (Mobile) - FIX: Improved delta calculation
         function onTouchMove(event) {
             if (!controlsEnabled) return;
+            event.preventDefault(); // Prevent scrolling/panning when looking
+
             // Use the first touch point for camera rotation
             if (event.touches.length > 0) {
                 const touch = event.touches[0];
-                if (lastTouchX === 0) { lastTouchX = touch.clientX; lastTouchY = touch.clientY; return; }
+
+                // If last position wasn't set, set it now.
+                if (lastTouchX === 0) {
+                    lastTouchX = touch.clientX;
+                    lastTouchY = touch.clientY;
+                    return;
+                }
 
                 // Calculate movement delta
                 const deltaX = touch.clientX - lastTouchX;
@@ -632,9 +685,33 @@
             }
         }
 
-        function onTouchEnd() {
-            lastTouchX = 0;
-            lastTouchY = 0;
+        function onTouchEnd(event) {
+            // Only reset if no touches remain
+            if (event.touches.length === 0) {
+                lastTouchX = 0;
+                lastTouchY = 0;
+            }
+        }
+
+        // NEW: Multiplayer Player Update Framework
+        // This function would be called when network data is received from a server.
+        function updateRemotePlayer(id, newPosition, newRotation) {
+            let playerMesh = otherPlayers.children.find(mesh => mesh.userData.id === id);
+
+            if (!playerMesh) {
+                // If the player mesh doesn't exist, create it (e.g., they just joined)
+                playerMesh = createPlayerMesh(id, `Player_${id}`, newPosition);
+            }
+
+            // Update position and rotation based on network data
+            playerMesh.position.set(
+                newPosition.x,
+                newPosition.y + OTHER_PLAYER_HEIGHT / 2, // Center the cylinder on the floor
+                newPosition.z
+            );
+
+            // Apply rotation:
+            // playerMesh.rotation.y = newRotation.y; 
         }
 
         // Action Bindings (Desktop/Mobile)
@@ -751,10 +828,12 @@
             }
         });
 
-        // Add event listeners for touch controls if on a touch device
+        // FIX: Replaced global document touch listeners with listeners on the canvas (renderer.domElement)
+        // This prevents the camera look from conflicting with the D-pad and action buttons.
         if (isTouchDevice) {
-            document.addEventListener('touchmove', onTouchMove, { passive: false });
-            document.addEventListener('touchend', onTouchEnd);
+            renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
+            renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
+            renderer.domElement.addEventListener('touchend', onTouchEnd);
         } else {
             document.addEventListener('mousemove', onMouseMove);
         }
